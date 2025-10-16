@@ -42,7 +42,7 @@ proc print data=work._contents label noobs; run;
 
 /* 2) Numeric variables: summary stats + histograms */
 title "Numeric Summary: &DS";
-proc means data=&DS n nmiss mean std min p25 median p75 max maxdec;
+proc means data=&DS n nmiss mean std min p25 median p75 max maxdec=2;
   var _numeric_;
 run;
 
@@ -163,48 +163,89 @@ title;
 *-------------------------------------------------------------------------------------*
 |					            Plots over time by State     	          		  	  |
 *-------------------------------------------------------------------------------------*;
+/**************************************************************************
+ Purpose:   Summarize and visualize unemployment rates for women by state 
+            and year from the HHS.COVID_LABOR_SUPPLY dataset
+ Author:    (You!)
+ Updated:   <add date here>
+ Notes:     This code prints summary tables, then creates multiple graphs:
+              1. Table of unemployment measures by state & year
+              2. Small-multiple line charts (one per state)
+              3. Focused line chart for select states
+              4. Heatmap of unemployment rates across states & years
+**************************************************************************/
+
+/*---------------------------------------------------------------*/
+/* STEP 1: Sort data by state and year                           */
+/*---------------------------------------------------------------*/
 title "Unemployment Rates for Women by State and Year";
+
 proc sort data=HHS.COVID_LABOR_SUPPLY out=work.covid_sorted;
-  by state_name year;
+  by state_name year;          /* Ensures table and plots display in order */
 run;
 
+
+/*---------------------------------------------------------------*/
+/* STEP 2: Print simple summary table                            */
+/*---------------------------------------------------------------*/
 proc print data=work.covid_sorted noobs label;
-  var state_name year UE_Women UE_Women_NoKids UE_Women_OlderKids UE_Women_YoungKids;
-  format UE_Women--UE_Women_YoungKids percent8.1;
+  var state_name year 
+      UE_Women UE_Women_NoKids UE_Women_OlderKids UE_Women_YoungKids;
+  format UE_Women--UE_Women_YoungKids percent8.1;  /* Show % with 1 decimal */
 run;
 
-/* Small multiples: one panel per state, four lines per panel */
+
+/*---------------------------------------------------------------*/
+/* STEP 3: Line charts by state (small multiples)                */
+/*         Each panel = one state; shows 4 lines per panel       */
+/*---------------------------------------------------------------*/
 ods graphics on;
 
 proc sgpanel data=HHS.COVID_LABOR_SUPPLY;
+  /* Create one panel per state, 5 panels per row */
   panelby state_name / columns=5 novarname uniscale=column onepanel;
+
+  /* Add 4 time series lines per panel (different line styles) */
   series x=year y=UE_Women           / legendlabel="All Women";
-  series x=year y=UE_Women_NoKids    / legendlabel="No Children"        lineattrs=(pattern=shortdash);
-  series x=year y=UE_Women_OlderKids / legendlabel="Older Children"     lineattrs=(pattern=dot);
-  series x=year y=UE_Women_YoungKids / legendlabel="Young Children"     lineattrs=(pattern=dashdot);
+  series x=year y=UE_Women_NoKids    / legendlabel="No Children"    lineattrs=(pattern=shortdash);
+  series x=year y=UE_Women_OlderKids / legendlabel="Older Children" lineattrs=(pattern=dot);
+  series x=year y=UE_Women_YoungKids / legendlabel="Young Children" lineattrs=(pattern=dashdot);
+
+  /* Format axes */
   colaxis label="Year" integer;
   rowaxis label="Unemployment Rate" valuesformat=percent8.1 grid;
+
+  /* Add legend below charts */
   keylegend / position=bottom across=2;
+
   title "Unemployment Trends by Child Status — One Panel per State";
 run;
 
 ods graphics off;
 
 
+/*---------------------------------------------------------------*/
+/* STEP 4: Focused plot for selected states (less cluttered)     */
+/*---------------------------------------------------------------*/
 proc sgplot data=HHS.COVID_LABOR_SUPPLY;
-  where state_name in ("California", "Texas", "New York");
+  where state_name in ("California", "Texas", "New York");  /* Filter states */
   series x=year y=UE_Women / group=state_name lineattrs=(thickness=2);
   yaxis label="Unemployment Rate" grid;
+  title "Unemployment Trends — Selected States";
 run;
 
 
+/*---------------------------------------------------------------*/
+/* STEP 5: Heatmap of unemployment rate by state & year          */
+/*         Darker color = higher unemployment                    */
+/*---------------------------------------------------------------*/
 title "Unemployment Rate (All Women) by State and Year";
 
 proc sgplot data=HHS.COVID_LABOR_SUPPLY;
   heatmap x=year y=state_name / 
           colorresponse=UE_Women
-          colormodel=(white orange red);
-*  colorbar title="Unemployment Rate";
+          colormodel=(white orange red);  /* White=low, red=high unemployment */
+*  colorbar title="Unemployment Rate";     /* Adds color scale legend */
   xaxis discreteorder=data;
   yaxis discreteorder=data;
 run;
